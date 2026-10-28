@@ -1,0 +1,2404 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lettore di testi cinesi</title>
+  <meta name="description" content="Incolla un testo in cinese, leggilo parola per parola con pinyin, definizioni, audio e parole salvate. Dizionario CC-CEDICT.">
+  <meta name="theme-color" content="#f5f1e8" id="themeColorMeta">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23b23a2f'/><text x='50' y='73' font-size='64' text-anchor='middle' fill='%23fffaf4' font-family='sans-serif'>汉</text></svg>">
+
+  <!-- Il tema viene deciso prima del primo paint, per evitare il flash bianco. -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('zn_theme');
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme =
+          (saved === 'light' || saved === 'dark') ? saved : (dark ? 'dark' : 'light');
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
+
+  <style>
+    /* =====================================================================
+       Token di design
+       ===================================================================== */
+    :root {
+      --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+            "Helvetica Neue", Arial, sans-serif;
+      /* Noto Sans SC viene usato se installato: nessun font scaricato dalla
+         rete, come richiesto. I fallback coprono macOS, Windows, Linux e
+         Android. */
+      --han: "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC",
+             "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+             "WenQuanYi Micro Hei", sans-serif;
+
+      --bg: #f5f1e8;
+      --surface: #fffdf8;
+      --surface-2: #faf6ee;
+      --text: #21242a;
+      --muted: #6f716e;
+      --line: #e2dacb;
+      --accent: #b23a2f;
+      --accent-hover: #922e25;
+      --accent-soft: #f7e3dc;
+      --on-accent: #fffaf4;
+      --ok: #2f7b59;
+      --error: #a32727;
+      --focus: rgba(178, 58, 47, .22);
+      --shadow: 0 24px 60px rgba(74, 51, 28, .13), 0 3px 10px rgba(74, 51, 28, .06);
+      --radius: 20px;
+      --reading-scale: 1;
+    }
+
+    [data-theme="dark"] {
+      --bg: #131519;
+      --surface: #1c1f25;
+      --surface-2: #23272f;
+      --text: #ece9e2;
+      --muted: #9fa3a8;
+      --line: #333943;
+      --accent: #e5765f;
+      --accent-hover: #f08a73;
+      --accent-soft: #3a2623;
+      --on-accent: #1d1210;
+      --ok: #6fc39b;
+      --error: #ff8d7d;
+      --focus: rgba(229, 118, 95, .25);
+      --shadow: 0 24px 60px rgba(0, 0, 0, .45), 0 3px 10px rgba(0, 0, 0, .3);
+    }
+
+    /* =====================================================================
+       Base
+       ===================================================================== */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(900px 520px at 88% -8%, rgba(178, 58, 47, .09), transparent 70%),
+        radial-gradient(700px 420px at -12% 8%, rgba(182, 145, 67, .11), transparent 70%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--ui);
+      font-size: 16px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    [data-theme="dark"] body {
+      background:
+        radial-gradient(900px 520px at 88% -8%, rgba(229, 118, 95, .08), transparent 70%),
+        radial-gradient(700px 420px at -12% 8%, rgba(189, 168, 105, .05), transparent 70%),
+        var(--bg);
+    }
+
+    h1, h2, p { margin: 0; }
+    button, input, textarea { font: inherit; color: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+    a { color: var(--accent); text-underline-offset: 2px; }
+    a:hover { color: var(--accent-hover); }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .9em;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: .05em .3em;
+    }
+    ::selection { background: var(--accent-soft); color: var(--text); }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .wrap {
+      width: min(980px, calc(100% - 40px));
+      margin-inline: auto;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: none;
+    }
+
+    [hidden] { display: none !important; }
+
+    /* =====================================================================
+       Header
+       ===================================================================== */
+    .topbar {
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 84%, transparent);
+      position: relative;
+      z-index: 20;
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding-block: 14px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .seal {
+      width: 44px;
+      height: 44px;
+      flex: none;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--accent);
+      color: var(--on-accent);
+      font-family: var(--han);
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1;
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .22), 0 5px 12px rgba(80, 30, 20, .18);
+      transform: rotate(-2deg);
+    }
+
+    .brand-text { min-width: 0; }
+
+    .brand h1 {
+      font-size: clamp(1.05rem, 2.1vw, 1.35rem);
+      line-height: 1.2;
+      letter-spacing: -.015em;
+      font-weight: 750;
+    }
+
+    .title-short { display: none; }
+
+    .brand p {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: .8rem;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: none;
+    }
+
+    /* =====================================================================
+       Bottoni
+       ===================================================================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: .45rem;
+      padding: .58rem 1rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: .9rem;
+      font-weight: 650;
+      line-height: 1.2;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background-color .15s, color .15s, border-color .15s, transform .1s;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--surface);
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .btn.primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+      color: var(--on-accent);
+    }
+
+    .btn:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn.icon-only {
+      width: 40px;
+      height: 40px;
+      padding: 0;
+    }
+
+    .badge {
+      display: inline-grid;
+      place-items: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: .7rem;
+      font-weight: 750;
+      line-height: 1;
+    }
+
+    .linklike {
+      display: inline;
+      border: 0;
+      padding: 0;
+      background: none;
+      color: var(--accent);
+      font: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      cursor: pointer;
+    }
+
+    .linklike:hover { color: var(--accent-hover); }
+
+    /* =====================================================================
+       Stato dizionario
+       ===================================================================== */
+    .dict-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: .86rem;
+    }
+
+    .dict-status.ready {
+      color: var(--ok);
+      border-color: color-mix(in srgb, var(--ok) 35%, var(--line));
+    }
+
+    .dict-status.error {
+      color: var(--error);
+      border-color: color-mix(in srgb, var(--error) 40%, var(--line));
+    }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      flex: none;
+      border: 2px solid var(--line);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    .dict-status.ready .spinner,
+    .dict-status.error .spinner { display: none; }
+
+    .dict-progress {
+      flex: 1;
+      max-width: 240px;
+      height: 6px;
+      margin-left: auto;
+      border-radius: 999px;
+      background: var(--surface-2);
+      overflow: hidden;
+    }
+
+    .dict-progress span {
+      display: block;
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      transition: width .2s ease;
+    }
+
+    .dict-status .linklike { margin-left: auto; color: var(--error); }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* =====================================================================
+       Card di input
+       ===================================================================== */
+    .input-card {
+      margin-top: 26px;
+      padding: clamp(18px, 3vw, 30px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .field-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    .field-label span {
+      color: var(--muted);
+      font-size: .8rem;
+      font-weight: 500;
+    }
+
+    #sourceText {
+      display: block;
+      width: 100%;
+      min-height: clamp(190px, 30vh, 310px);
+      resize: vertical;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface-2);
+      color: var(--text);
+      font-family: var(--han);
+      font-size: 1.22rem;
+      line-height: 1.95;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+
+    #sourceText::placeholder { color: var(--muted); opacity: .72; }
+
+    #sourceText:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px var(--focus);
+    }
+
+    .input-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .hint {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: .76rem;
+    }
+
+    .input-actions .btn.primary { min-width: 110px; }
+
+    /* =====================================================================
+       Vista di lettura
+       ===================================================================== */
+    .reading-bar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 16px;
+      margin-top: 22px;
+      padding: 10px 0;
+      background: color-mix(in srgb, var(--bg) 90%, transparent);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+    }
+
+    .reading-tools {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      margin-left: auto;
+    }
+
+    .font-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+    }
+
+    .font-btn {
+      width: 34px;
+      height: 28px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-size: .8rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .font-btn:hover { background: var(--accent-soft); color: var(--accent); }
+
+    /* Switch pinyin */
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      font-size: .85rem;
+      font-weight: 650;
+    }
+
+    .switch input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .switch-track {
+      position: relative;
+      width: 40px;
+      height: 24px;
+      border-radius: 999px;
+      background: var(--line);
+      transition: background-color .18s;
+      flex: none;
+    }
+
+    .switch-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--surface);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .22);
+      transition: transform .18s;
+    }
+
+    .switch input:checked + .switch-track { background: var(--accent); }
+    .switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); }
+    .switch input:focus-visible + .switch-track {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    .reading {
+      margin-top: 8px;
+      padding: clamp(20px, 4vw, 44px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      font-family: var(--han);
+      font-size: calc(clamp(1.5rem, 2.8vw, 2.1rem) * var(--reading-scale, 1));
+      line-height: 2.15;
+      letter-spacing: .012em;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      min-height: 220px;
+    }
+
+    .w {
+      border-radius: 6px;
+      padding: .02em .03em;
+      margin: 0 -.02em;
+      cursor: pointer;
+      transition: background-color .12s, color .12s;
+    }
+
+    .w:hover,
+    .w.active { background: var(--accent-soft); }
+
+    .w.nf {
+      text-decoration: underline dotted color-mix(in srgb, var(--muted) 55%, transparent);
+      text-underline-offset: .18em;
+    }
+
+    ruby { ruby-position: over; }
+
+    rt {
+      font-family: var(--ui);
+      font-size: .4em;
+      line-height: 1.15;
+      font-weight: 650;
+      letter-spacing: 0;
+      color: var(--accent);
+    }
+
+    .reading-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 16px;
+      padding: 12px 4px 0;
+      color: var(--muted);
+      font-size: .79rem;
+    }
+
+    .reading-meta .meta-hint { margin-left: auto; }
+
+    /* =====================================================================
+       Pop-up della parola
+       ===================================================================== */
+    .popup {
+      position: fixed;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      width: min(380px, calc(100vw - 20px));
+      max-height: 70vh;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      animation: popIn .13s ease-out;
+    }
+
+    @keyframes popIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .popup-close {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 2;
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: var(--surface-2);
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .popup-close:hover { color: var(--accent); background: var(--accent-soft); }
+    .popup-close .icon { width: 16px; height: 16px; }
+
+    .popup-scroll {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 18px;
+    }
+
+    .popup-group + .popup-group {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .hz-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px;
+      padding-right: 34px;
+      margin-bottom: 12px;
+    }
+
+    .hz-main,
+    .hz-alt {
+      font-family: var(--han);
+      font-size: 2rem;
+      font-weight: 600;
+      line-height: 1.18;
+    }
+
+    .hz-sep { color: var(--muted); font-size: 1.1rem; }
+
+    .sense + .sense {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .sense-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .pinyin {
+      color: var(--accent);
+      font-size: 1.06rem;
+      font-weight: 750;
+      letter-spacing: .01em;
+      overflow-wrap: anywhere;
+    }
+
+    .sense-actions { display: flex; gap: 6px; flex: none; }
+
+    .round-btn {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--surface-2);
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .round-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .round-btn .icon { width: 15px; height: 15px; }
+
+    .save-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: .73rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .save-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .save-btn.is-saved {
+      border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .save-btn .icon { width: 13px; height: 13px; }
+    .save-btn.is-saved .icon { fill: currentColor; }
+
+    .defs {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      font-size: .9rem;
+      line-height: 1.55;
+    }
+
+    .defs li + li { margin-top: 4px; }
+    .defs li::marker { color: var(--accent); }
+
+    .popup-empty p {
+      color: var(--muted);
+      font-size: .9rem;
+      margin-top: 4px;
+    }
+
+    /* =====================================================================
+       Dialogo parole salvate
+       ===================================================================== */
+    dialog {
+      width: min(560px, calc(100vw - 24px));
+      height: fit-content;
+      max-height: min(85vh, 720px);
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    dialog::backdrop {
+      background: rgba(15, 15, 18, .48);
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
+    }
+
+    .dialog-inner {
+      display: flex;
+      flex-direction: column;
+      max-height: inherit;
+    }
+
+    .dialog-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .dialog-head h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.08rem;
+      font-weight: 750;
+    }
+
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--surface-2);
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .icon-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    .saved-list {
+      flex: 0 1 auto;
+      max-height: min(55vh, 520px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 4px 20px;
+    }
+
+    .saved-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .saved-row:last-child { border-bottom: 0; }
+
+    .saved-info { flex: 1; min-width: 0; }
+
+    .saved-hz {
+      font-family: var(--han);
+      font-size: 1.5rem;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    .saved-t {
+      margin-left: 6px;
+      color: var(--muted);
+      font-size: .68em;
+      font-weight: 500;
+    }
+
+    .saved-pinyin {
+      margin-top: 2px;
+      color: var(--accent);
+      font-size: .85rem;
+      font-weight: 700;
+    }
+
+    .saved-meaning {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: .8rem;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .saved-actions { display: flex; gap: 4px; flex: none; }
+
+    .saved-empty {
+      padding: 46px 20px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .saved-empty .icon {
+      width: 34px;
+      height: 34px;
+      margin-bottom: 10px;
+      color: var(--accent);
+    }
+
+    .saved-empty p { font-size: .88rem; max-width: 320px; margin: 0 auto; }
+
+    .dialog-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 20px 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    .dialog-note {
+      width: 100%;
+      color: var(--muted);
+      font-size: .72rem;
+    }
+
+    body.modal-open { overflow: hidden; }
+
+    /* =====================================================================
+       Toast
+       ===================================================================== */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: max(20px, env(safe-area-inset-bottom));
+      z-index: 300;
+      max-width: calc(100vw - 32px);
+      padding: 10px 16px;
+      border-radius: 999px;
+      background: var(--text);
+      color: var(--bg);
+      box-shadow: var(--shadow);
+      font-size: .84rem;
+      font-weight: 650;
+      text-align: center;
+      opacity: 0;
+      transform: translate(-50%, 12px);
+      pointer-events: none;
+      transition: opacity .2s, transform .2s;
+    }
+
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast[data-kind="error"] { background: var(--error); color: #fff; }
+
+    /* =====================================================================
+       Footer
+       ===================================================================== */
+    .site-footer {
+      width: min(980px, calc(100% - 40px));
+      margin: 52px auto 0;
+      padding: 24px 0 max(40px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: .78rem;
+      line-height: 1.7;
+    }
+
+    .site-footer p + p { margin-top: 6px; }
+
+    /* =====================================================================
+       Responsive
+       ===================================================================== */
+    @media (max-width: 680px) {
+      .wrap,
+      .site-footer { width: calc(100% - 24px); }
+
+      .topbar-inner { padding-block: 10px; }
+
+      .seal {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        font-size: 20px;
+      }
+
+      .brand h1 { font-size: 1.02rem; }
+      .brand p { display: none; }
+
+      .btn { padding: .52rem .8rem; font-size: .84rem; }
+      .saved-label { display: none; }
+      .topbar-actions { gap: 6px; }
+
+      .input-card { padding: 16px; border-radius: 16px; margin-top: 18px; }
+      .field-label { flex-direction: column; gap: 2px; }
+      .hint { display: none; }
+      #sourceText { font-size: 1.12rem; padding: 14px; }
+
+      .reading-bar { margin-top: 16px; padding: 8px 0; }
+      .reading { padding: 18px 16px; border-radius: 16px; line-height: 2.2; }
+
+      .reading-meta { font-size: .74rem; }
+      .reading-meta .meta-hint { flex-basis: 100%; margin-left: 0; }
+
+      .dict-status { font-size: .79rem; padding: 9px 12px; }
+      .dict-progress { display: none; }
+
+      .popup { border-radius: 16px; }
+      .popup-scroll { padding: 15px; }
+      .hz-main, .hz-alt { font-size: 1.8rem; }
+
+      .dialog-head { padding: 14px 16px; }
+      .saved-list { padding: 4px 16px; }
+      .dialog-actions { padding: 12px 16px 16px; }
+    }
+
+    @media (max-width: 520px) {
+      .title-long { display: none; }
+      .title-short { display: inline; }
+      .brand h1 { font-size: 1.1rem; }
+    }
+
+    @media (max-width: 400px) {
+      .brand { gap: 9px; }
+      .btn.icon-only { width: 36px; height: 36px; }
+    }
+
+    @media (hover: none) {
+      .w:hover { background: transparent; }
+      .w.active { background: var(--accent-soft); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Sprite di icone inline: nessuna richiesta di rete. -->
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden">
+    <symbol id="i-sun" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24">
+      <path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/>
+    </symbol>
+    <symbol id="i-star" viewBox="0 0 24 24">
+      <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3Z"/>
+    </symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24">
+      <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z"/>
+      <path d="M15 9.3a4 4 0 0 1 0 5.4M18 6.5a8 8 0 0 1 0 11"/>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24">
+      <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>
+    </symbol>
+    <symbol id="i-download" viewBox="0 0 24 24">
+      <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/>
+    </symbol>
+    <symbol id="i-close" viewBox="0 0 24 24">
+      <path d="M6 6l12 12M18 6 6 18"/>
+    </symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24">
+      <path d="m14 6-6 6 6 6"/>
+    </symbol>
+    <symbol id="i-book" viewBox="0 0 24 24">
+      <path d="M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5"/>
+      <path d="M8 7h7M8 11h5"/>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24">
+      <path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/>
+    </symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <div class="brand">
+        <span class="seal" aria-hidden="true">汉</span>
+        <div class="brand-text">
+          <h1>
+            <span class="title-long">Lettore di testi cinesi</span>
+            <span class="title-short">Lettore cinese</span>
+          </h1>
+          <p>Incolla un testo, leggi parola per parola.</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" class="btn" id="savedBtn" aria-haspopup="dialog"
+          aria-label="Parole salvate: 0" title="Parole salvate">
+          <svg class="icon" aria-hidden="true"><use href="#i-star"></use></svg>
+          <span class="saved-label">Parole</span>
+          <span class="badge" id="savedCount">0</span>
+        </button>
+        <button type="button" class="btn icon-only" id="themeBtn" aria-label="Cambia tema">
+          <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap" id="main">
+    <div id="dictStatus" class="dict-status" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="dictStatusText">Caricamento del dizionario…</span>
+      <div class="dict-progress" id="dictProgress" hidden><span id="dictProgressBar"></span></div>
+      <button type="button" class="linklike" id="retryDictBtn" hidden>Riprova</button>
+    </div>
+
+    <!-- ================= Vista di inserimento ================= -->
+    <section class="input-card" id="inputView" aria-labelledby="inputTitle">
+      <label class="field-label" for="sourceText" id="inputTitle">
+        Testo in cinese
+        <span>semplificato o tradizionale</span>
+      </label>
+      <textarea id="sourceText" spellcheck="false" autocomplete="off"
+        placeholder="Incolla qui il tuo testo in cinese…&#10;&#10;Per esempio: 大家好！我今天想给大家介绍一本很有意思的书。"></textarea>
+      <div class="input-actions">
+        <button type="button" class="btn primary" id="readBtn" disabled>Leggi</button>
+        <button type="button" class="btn" id="sampleBtn">Usa un esempio</button>
+        <button type="button" class="btn" id="clearTextBtn">Pulisci</button>
+        <span class="hint">Ctrl/⌘ + Invio per leggere</span>
+      </div>
+    </section>
+
+    <!-- ================= Vista di lettura ================= -->
+    <section id="readingView" hidden aria-label="Testo da leggere">
+      <div class="reading-bar">
+        <button type="button" class="btn" id="editBtn">
+          <svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+          Modifica testo
+        </button>
+        <div class="reading-tools">
+          <div class="font-controls" role="group" aria-label="Dimensione del testo">
+            <button type="button" class="font-btn" id="fontMinus" aria-label="Riduci dimensione testo">A−</button>
+            <button type="button" class="font-btn" id="fontPlus" aria-label="Ingrandisci dimensione testo">A+</button>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="pinyinToggle">
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            <span>Pinyin</span>
+          </label>
+        </div>
+      </div>
+      <article class="reading" id="reading" lang="zh"></article>
+      <div class="reading-meta">
+        <span id="metaWords"></span>
+        <span id="metaChars"></span>
+        <span class="meta-hint">Passa il mouse o tocca una parola per i dettagli.</span>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      Dizionario <a href="https://www.mdbg.net/chinese/dictionary?page=cc-cedict" target="_blank" rel="noopener">CC-CEDICT</a>
+      © CC-CEDICT contributors, distribuito con licenza
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>.
+      Il file <code>dict.json</code> è un’opera derivata e resta sotto la stessa licenza.
+    </p>
+    <p>
+      <span id="dictInfo">Dizionario non ancora caricato</span> ·
+      Nessuna chiamata di rete oltre a <code>dict.json</code> ·
+      <button type="button" class="linklike" id="refreshDictBtn">Aggiorna dizionario</button>
+    </p>
+  </footer>
+
+  <!-- Pop-up parola -->
+  <div class="popup" id="popup" role="dialog" aria-label="Dettagli della parola" hidden>
+    <button type="button" class="popup-close" id="popupCloseBtn" aria-label="Chiudi">
+      <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+    </button>
+    <div class="popup-scroll" id="popupScroll"></div>
+  </div>
+
+  <!-- Dialogo parole salvate -->
+  <dialog id="savedDialog" aria-labelledby="savedTitle">
+    <div class="dialog-inner">
+      <div class="dialog-head">
+        <h2 id="savedTitle">Parole salvate <span class="badge" id="savedDialogCount">0</span></h2>
+        <button type="button" class="icon-btn" id="closeSavedBtn" aria-label="Chiudi">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+        </button>
+      </div>
+      <div class="saved-list" id="savedList"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn primary" id="exportCsvBtn">
+          <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
+          Esporta CSV per Anki
+        </button>
+        <button type="button" class="btn" id="clearSavedBtn">
+          <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>
+          Svuota
+        </button>
+        <span class="dialog-note">Colonne: hanzi, pinyin, significato. Il file è UTF-8 con BOM, pronto per l’importazione.</span>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    /* =====================================================================
+       Lettore di testi cinesi — JavaScript vanilla, senza dipendenze.
+       Sezioni:
+         1. costanti e riferimenti DOM
+         2. utilità e storage
+         3. parole salvate + CSV
+         4. caricamento dizionario (fetch + IndexedDB)
+         5. segmentazione
+         6. rendering della vista di lettura
+         7. pop-up, audio, salvataggio
+         8. eventi e avvio
+       ===================================================================== */
+    (() => {
+      'use strict';
+
+      /* -------------------------------------------------------------------
+         1. Costanti e riferimenti DOM
+         ------------------------------------------------------------------- */
+      const DICT_URL = 'dict.json';
+      const DB_NAME = 'hanzi-reader';
+      const DB_VERSION = 1;
+      const DB_STORE = 'dictionary';
+      const CACHE_KEY = 'cc-cedict';
+      const CACHE_FORMAT = 1;
+      const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 giorni
+      const MAX_MATCH = 6;                       // longest-match massimo
+      const HAN_RE = /\p{Script=Han}/u;
+
+      const LS = {
+        theme: 'zn_theme',
+        text: 'zn_text',
+        saved: 'zn_saved_words_v1',
+        pinyin: 'zn_show_pinyin',
+        font: 'zn_font_scale'
+      };
+
+      const SAMPLE_TEXT =
+        '大家好！我今天想给大家介绍一本很有意思的书。这本书讲的是一位年轻人在中国旅行的故事。' +
+        '他去了北京、上海和西安，品尝了很多好吃的菜，也学会了几句汉语。';
+
+      const $ = (selector, root = document) => root.querySelector(selector);
+
+      const themeColorMeta = $('#themeColorMeta');
+      const themeBtn = $('#themeBtn');
+      const savedBtn = $('#savedBtn');
+      const savedCountEl = $('#savedCount');
+      const savedDialogCountEl = $('#savedDialogCount');
+      const inputView = $('#inputView');
+      const readingView = $('#readingView');
+      const sourceText = $('#sourceText');
+      const readBtn = $('#readBtn');
+      const sampleBtn = $('#sampleBtn');
+      const clearTextBtn = $('#clearTextBtn');
+      const editBtn = $('#editBtn');
+      const fontMinus = $('#fontMinus');
+      const fontPlus = $('#fontPlus');
+      const pinyinToggle = $('#pinyinToggle');
+      const reading = $('#reading');
+      const metaWords = $('#metaWords');
+      const metaChars = $('#metaChars');
+      const dictStatusEl = $('#dictStatus');
+      const dictStatusText = $('#dictStatusText');
+      const dictProgress = $('#dictProgress');
+      const dictProgressBar = $('#dictProgressBar');
+      const retryDictBtn = $('#retryDictBtn');
+      const dictInfo = $('#dictInfo');
+      const refreshDictBtn = $('#refreshDictBtn');
+      const popup = $('#popup');
+      const popupScroll = $('#popupScroll');
+      const popupCloseBtn = $('#popupCloseBtn');
+      const savedDialog = $('#savedDialog');
+      const savedList = $('#savedList');
+      const closeSavedBtn = $('#closeSavedBtn');
+      const exportCsvBtn = $('#exportCsvBtn');
+      const clearSavedBtn = $('#clearSavedBtn');
+      const toastEl = $('#toast');
+
+      /* -------------------------------------------------------------------
+         2. Utilità e storage
+         ------------------------------------------------------------------- */
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null) node.textContent = text;
+        return node;
+      }
+
+      function svgIcon(name, className = '') {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', `icon ${className}`.trim());
+        svg.setAttribute('aria-hidden', 'true');
+        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        use.setAttribute('href', `#i-${name}`);
+        svg.append(use);
+        return svg;
+      }
+
+      const nextFrame = () => new Promise((resolve) => {
+        requestAnimationFrame(() => setTimeout(resolve, 0));
+      });
+
+      function debounce(fn, wait) {
+        let timer = 0;
+        return (...args) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn(...args), wait);
+        };
+      }
+
+      const storage = {
+        get(key, fallback) {
+          try {
+            const value = localStorage.getItem(key);
+            return value === null ? fallback : value;
+          } catch (err) {
+            return fallback;
+          }
+        },
+        set(key, value) {
+          try { localStorage.setItem(key, value); } catch (err) { /* quota/private mode */ }
+        },
+        remove(key) {
+          try { localStorage.removeItem(key); } catch (err) { /* ignore */ }
+        }
+      };
+
+      let toastTimer = 0;
+      function toast(message, kind = 'info') {
+        toastEl.textContent = message;
+        toastEl.dataset.kind = kind;
+        toastEl.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
+      }
+
+      // Stato dell'applicazione
+      let dictionary = null;
+      let dictReady = false;
+      let dictLoading = false;
+      let statusTimer = 0;
+      let tokens = [];
+      let popupOpen = false;
+      let popupTokenIndex = -1;
+      let activeWordEl = null;
+      let hoverOpenTimer = 0;
+      let hoverCloseTimer = 0;
+      let speechVoices = [];
+      let warnedNoZhVoice = false;
+
+      let showPinyin = storage.get(LS.pinyin, '0') === '1';
+      let readingScale = clamp(parseFloat(storage.get(LS.font, '1')) || 1, 0.8, 1.6);
+      let savedWords = loadSavedWords();
+
+      const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+
+      /* -------------------------------------------------------------------
+         3. Parole salvate + esportazione CSV
+         ------------------------------------------------------------------- */
+      function wordKey(entry) {
+        // Chiave stabile: forma semplificata + pinyin + definizioni.
+        return entry[0] + '\u0001' + entry[2] + '\u0001' + entry[3].join('\u0002');
+      }
+
+      function loadSavedWords() {
+        try {
+          const parsed = JSON.parse(storage.get(LS.saved, '[]'));
+          if (!Array.isArray(parsed)) return [];
+          return parsed
+            .filter((w) => w && typeof w.s === 'string' && typeof w.p === 'string' && Array.isArray(w.d))
+            .map((w) => ({
+              key: typeof w.key === 'string'
+                ? w.key
+                : w.s + '\u0001' + w.p + '\u0001' + w.d.join('\u0002'),
+              s: w.s,
+              t: typeof w.t === 'string' ? w.t : w.s,
+              p: w.p,
+              d: w.d.filter((d) => typeof d === 'string'),
+              savedAt: Number(w.savedAt) || Date.now()
+            }));
+        } catch (err) {
+          console.warn('Impossibile leggere le parole salvate:', err);
+          return [];
+        }
+      }
+
+      function persistSavedWords() {
+        storage.set(LS.saved, JSON.stringify(savedWords));
+      }
+
+      function isSaved(entry) {
+        const key = wordKey(entry);
+        return savedWords.some((w) => w.key === key);
+      }
+
+      function updateSavedCount() {
+        const count = String(savedWords.length);
+        savedCountEl.textContent = count;
+        savedDialogCountEl.textContent = count;
+        savedBtn.setAttribute('aria-label', `Parole salvate: ${count}`);
+      }
+
+      function updateSaveButton(button, saved) {
+        button.classList.toggle('is-saved', saved);
+        button.setAttribute('aria-pressed', saved ? 'true' : 'false');
+        const label = $('.save-text', button);
+        if (label) label.textContent = saved ? 'Salvata' : 'Salva';
+      }
+
+      function refreshOpenSaveButtons() {
+        if (!popupOpen || !dictionary) return;
+        popup.querySelectorAll('[data-save]').forEach((button) => {
+          const entry = dictionary.entries[Number(button.dataset.save)];
+          if (entry) updateSaveButton(button, isSaved(entry));
+        });
+      }
+
+      function toggleSaved(entryId) {
+        if (!dictionary) return;
+        const entry = dictionary.entries[entryId];
+        if (!entry) return;
+
+        const key = wordKey(entry);
+        const index = savedWords.findIndex((w) => w.key === key);
+
+        if (index >= 0) {
+          savedWords.splice(index, 1);
+          toast('Parola rimossa dalle salvate.');
+        } else {
+          savedWords.unshift({
+            key,
+            s: entry[0],
+            t: entry[1],
+            p: entry[2],
+            d: entry[3].slice(),
+            savedAt: Date.now()
+          });
+          toast('Parola salvata.');
+        }
+
+        persistSavedWords();
+        updateSavedCount();
+        refreshOpenSaveButtons();
+        if (savedDialog.open) renderSavedList();
+      }
+
+      function csvCell(value) {
+        const text = String(value ?? '');
+        return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      }
+
+      function exportCsv() {
+        if (!savedWords.length) {
+          toast('Nessuna parola da esportare.', 'error');
+          return;
+        }
+
+        const rows = [['hanzi', 'pinyin', 'significato']];
+        for (const word of savedWords) {
+          rows.push([word.s, word.p, word.d.join('; ')]);
+        }
+
+        // BOM UTF-8: Excel riconosce subito i caratteri cinesi.
+        const csv = '\uFEFF' + rows
+          .map((row) => row.map(csvCell).join(','))
+          .join('\r\n');
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `parole-cinesi-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        toast(savedWords.length === 1 ? 'Esportata 1 parola.' : `Esportate ${savedWords.length} parole.`);
+      }
+
+      function renderSavedList() {
+        savedList.replaceChildren();
+        updateSavedCount();
+
+        if (!savedWords.length) {
+          const empty = el('div', 'saved-empty');
+          empty.append(svgIcon('book'));
+          empty.append(el('p', null,
+            'Nessuna parola salvata. Apri il dettaglio di una parola e premi “Salva” per ritrovarla qui.'));
+          savedList.append(empty);
+          exportCsvBtn.disabled = true;
+          clearSavedBtn.disabled = true;
+          return;
+        }
+
+        exportCsvBtn.disabled = false;
+        clearSavedBtn.disabled = false;
+
+        savedWords.forEach((word, index) => {
+          const row = el('div', 'saved-row');
+
+          const info = el('div', 'saved-info');
+          const hz = el('div', 'saved-hz');
+          const simp = el('span', null, word.s);
+          simp.lang = 'zh-Hans';
+          hz.append(simp);
+          if (word.t && word.t !== word.s) {
+            const trad = el('span', 'saved-t', word.t);
+            trad.lang = 'zh-Hant';
+            hz.append(trad);
+          }
+          info.append(hz);
+          info.append(el('div', 'saved-pinyin', word.p));
+          const meaning = el('div', 'saved-meaning', word.d.join('; '));
+          meaning.title = word.d.join('; ');
+          info.append(meaning);
+
+          const actions = el('div', 'saved-actions');
+
+          const speakBtn = el('button', 'round-btn');
+          speakBtn.type = 'button';
+          speakBtn.dataset.speak = word.s;
+          speakBtn.title = 'Ascolta';
+          speakBtn.setAttribute('aria-label', `Ascolta ${word.s}`);
+          speakBtn.append(svgIcon('sound'));
+
+          const removeBtn = el('button', 'round-btn');
+          removeBtn.type = 'button';
+          removeBtn.dataset.remove = String(index);
+          removeBtn.title = 'Rimuovi';
+          removeBtn.setAttribute('aria-label', `Rimuovi ${word.s}`);
+          removeBtn.append(svgIcon('trash'));
+
+          actions.append(speakBtn, removeBtn);
+          row.append(info, actions);
+          savedList.append(row);
+        });
+      }
+
+      function openSavedDialog() {
+        renderSavedList();
+        document.body.classList.add('modal-open');
+        if (!savedDialog.open) savedDialog.showModal();
+      }
+
+      function closeSavedDialog() {
+        if (savedDialog.open) savedDialog.close();
+      }
+
+      function speak(text) {
+        if (!('speechSynthesis' in window)) {
+          toast('Questo browser non supporta la sintesi vocale.', 'error');
+          return;
+        }
+
+        if (!speechVoices.length) refreshVoices();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 0.8;
+        utterance.pitch = 1;
+
+        const voice =
+          speechVoices.find((v) => /^zh[-_]?(cn|hans)/i.test(v.lang)) ||
+          speechVoices.find((v) => /^zh/i.test(v.lang));
+
+        if (voice) {
+          utterance.voice = voice;
+        } else if (!warnedNoZhVoice) {
+          warnedNoZhVoice = true;
+          toast('Nessuna voce cinese installata: uso la voce predefinita del sistema.');
+        }
+
+        utterance.onerror = (event) => {
+          // "interrupted"/"canceled" sono normali quando si preme di nuovo
+          // play mentre una lettura è già in corso.
+          if (event.error === 'interrupted' || event.error === 'canceled') return;
+          toast('Audio non disponibile con la voce selezionata.', 'error');
+        };
+
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      }
+
+      function refreshVoices() {
+        if (!('speechSynthesis' in window)) return;
+        speechVoices = window.speechSynthesis.getVoices();
+      }
+
+      /* -------------------------------------------------------------------
+         4. Tema chiaro/scuro
+         ------------------------------------------------------------------- */
+      function applyTheme(theme, persist = true) {
+        const value = theme === 'dark' ? 'dark' : 'light';
+        document.documentElement.dataset.theme = value;
+        if (persist) storage.set(LS.theme, value);
+
+        themeBtn.setAttribute('aria-label', value === 'dark' ? 'Passa al tema chiaro' : 'Passa al tema scuro');
+        const use = themeBtn.querySelector('use');
+        if (use) use.setAttribute('href', value === 'dark' ? '#i-sun' : '#i-moon');
+        if (themeColorMeta) themeColorMeta.setAttribute('content', value === 'dark' ? '#131519' : '#f5f1e8');
+      }
+
+      /* -------------------------------------------------------------------
+         5. Caricamento del dizionario: fetch + cache IndexedDB
+         ------------------------------------------------------------------- */
+      let dbPromise = null;
+
+      function getDB() {
+        if (!('indexedDB' in window)) {
+          return Promise.reject(new Error('IndexedDB non disponibile'));
+        }
+        if (!dbPromise) {
+          dbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = () => {
+              const db = request.result;
+              if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          }).catch((err) => {
+            dbPromise = null;
+            throw err;
+          });
+        }
+        return dbPromise;
+      }
+
+      async function idbGet(key) {
+        const db = await getDB();
+        return new Promise((resolve, reject) => {
+          const request = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(key);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      }
+
+      async function idbSet(key, value) {
+        const db = await getDB();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          tx.objectStore(DB_STORE).put(value, key);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+      }
+
+      async function idbDelete(key) {
+        const db = await getDB();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          tx.objectStore(DB_STORE).delete(key);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+      }
+
+      function setDictStatus(kind, message, percent = 0) {
+        dictStatusEl.hidden = false;
+        dictStatusEl.classList.toggle('ready', kind === 'ready');
+        dictStatusEl.classList.toggle('error', kind === 'error');
+        dictStatusText.textContent = message;
+        retryDictBtn.hidden = kind !== 'error';
+
+        if (kind === 'loading' && percent > 0) {
+          dictProgress.hidden = false;
+          dictProgressBar.style.width = `${percent}%`;
+        } else {
+          dictProgress.hidden = true;
+          if (kind === 'loading') dictProgressBar.style.width = '0%';
+        }
+      }
+
+      function showReadyStatus(meta, fromCache) {
+        const count = Number(meta && meta.entries) || (dictionary ? dictionary.entries.length : 0);
+        const label = count
+          ? `${count.toLocaleString('it-IT')} voci`
+          : 'dizionario pronto';
+        setDictStatus('ready', `Dizionario pronto · ${label}${fromCache ? ' (cache)' : ''}`);
+        dictInfo.textContent = count ? `${label} · CC-CEDICT` : 'Dizionario CC-CEDICT';
+
+        clearTimeout(statusTimer);
+        statusTimer = setTimeout(() => {
+          if (dictReady) dictStatusEl.hidden = true;
+        }, 3000);
+      }
+
+      function showDictError(error) {
+        console.error('Dizionario:', error);
+        dictStatusEl.title = error && error.message ? error.message : '';
+        const isFile = location.protocol === 'file:';
+        setDictStatus(
+          'error',
+          isFile
+            ? 'Apri la pagina con un server locale: python3 -m http.server'
+            : 'Impossibile caricare dict.json. Esegui build_dict.py e premi Riprova.'
+        );
+        readBtn.disabled = true;
+      }
+
+      async function fetchDictionary() {
+        const response = await fetch(DICT_URL, { cache: 'no-cache' });
+        if (!response.ok) throw new Error(`HTTP ${response.status} per ${DICT_URL}`);
+
+        const total = Number(response.headers.get('content-length')) || 0;
+        let text;
+
+        if (response.body && typeof response.body.getReader === 'function') {
+          const reader = response.body.getReader();
+          const chunks = [];
+          let received = 0;
+          let lastProgressUpdate = 0;
+
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+
+            // Aggiorna la UI al massimo ogni 200 ms: il download è veloce e
+            // un aggiornamento per chunk sarebbe inutile (e rumoroso per gli
+            // screen reader).
+            const now = performance.now();
+            if (now - lastProgressUpdate < 200) continue;
+            lastProgressUpdate = now;
+
+            // Con la compressione HTTP il totale può essere più piccolo dei
+            // byte decodificati: fermiamo la percentuale al 99%.
+            const percent = total ? Math.min(99, Math.round((received / total) * 100)) : 0;
+            const size = (received / 1048576).toFixed(1).replace('.', ',');
+            setDictStatus(
+              'loading',
+              percent > 0
+                ? `Caricamento del dizionario… ${percent}%`
+                : `Caricamento del dizionario… ${size} MB`,
+              percent
+            );
+          }
+
+          const bytes = new Uint8Array(received);
+          let offset = 0;
+          for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.length;
+          }
+          text = new TextDecoder('utf-8').decode(bytes);
+        } else {
+          text = await response.text();
+        }
+
+        setDictStatus('loading', 'Preparazione del dizionario…');
+        await nextFrame(); // lascia dipingere lo stato prima del parsing
+
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (err) {
+          throw new Error('dict.json non è un JSON valido.');
+        }
+
+        if (!data || !Array.isArray(data.entries) || !data.index || typeof data.index !== 'object') {
+          throw new Error('Formato di dict.json non riconosciuto.');
+        }
+
+        return data;
+      }
+
+      function applyDictionary(data, { fromCache = false } = {}) {
+        dictionary = data;
+        dictReady = true;
+        readBtn.disabled = false;
+        showReadyStatus(data.meta || {}, fromCache);
+
+        // Se per qualche motivo il dizionario arriva mentre siamo già nella
+        // vista di lettura, ri-renderizza il testo corrente.
+        if (!readingView.hidden && sourceText.value.trim()) {
+          tokens = tokenize(sourceText.value);
+          renderReading();
+        }
+      }
+
+      async function initDictionary() {
+        if (dictLoading || dictReady) return;
+        dictLoading = true;
+        retryDictBtn.hidden = true;
+        setDictStatus('loading', 'Cerco il dizionario nella cache…');
+
+        try {
+          let cached = null;
+          try {
+            cached = await idbGet(CACHE_KEY);
+          } catch (err) {
+            console.warn('Cache IndexedDB non disponibile:', err);
+          }
+
+          const cacheValid = cached &&
+            cached.format === CACHE_FORMAT &&
+            Date.now() - Number(cached.savedAt) < CACHE_TTL &&
+            cached.data && Array.isArray(cached.data.entries) && cached.data.index;
+
+          if (cacheValid) {
+            applyDictionary(cached.data, { fromCache: true });
+            return;
+          }
+
+          const data = await fetchDictionary();
+          applyDictionary(data);
+
+          // Il salvataggio in cache avviene in background, quando il browser
+          // è libero: non blocca la lettura, ma rende istantaneo il
+          // caricamento successivo.
+          const storeInCache = () => {
+            idbSet(CACHE_KEY, {
+              format: CACHE_FORMAT,
+              savedAt: Date.now(),
+              data
+            }).catch((err) => console.warn('Impossibile salvare il dizionario in cache:', err));
+          };
+
+          if ('requestIdleCallback' in window) {
+            window.requestIdleCallback(storeInCache, { timeout: 3000 });
+          } else {
+            setTimeout(storeInCache, 800);
+          }
+        } catch (err) {
+          // Se abbiamo una copia scaduta ma utilizzabile, meglio funzionare
+          // offline che mostrare una pagina vuota.
+          let stale = null;
+          try { stale = await idbGet(CACHE_KEY); } catch (cacheErr) { /* ignore */ }
+
+          if (stale && stale.data && Array.isArray(stale.data.entries) && stale.data.index) {
+            applyDictionary(stale.data, { fromCache: true });
+            toast('Dizionario dalla cache: aggiornamento non riuscito.', 'error');
+          } else {
+            showDictError(err);
+          }
+        } finally {
+          dictLoading = false;
+        }
+      }
+
+      /* -------------------------------------------------------------------
+         6. Segmentazione del testo
+         ------------------------------------------------------------------- */
+      let wordSegmenter = null;
+      try {
+        if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+          wordSegmenter = new Intl.Segmenter('zh', { granularity: 'word' });
+        }
+      } catch (err) {
+        console.warn('Intl.Segmenter non disponibile, uso il longest-match.', err);
+      }
+
+      function lookupIds(word) {
+        if (!dictionary) return null;
+        const index = dictionary.index;
+        if (!Object.prototype.hasOwnProperty.call(index, word)) return null;
+        const ids = index[word];
+        return Array.isArray(ids) && ids.length ? ids : null;
+      }
+
+      function pushRaw(list, text) {
+        if (!text) return;
+        const last = list[list.length - 1];
+        if (last && last.raw) last.text += text;
+        else list.push({ raw: true, text });
+      }
+
+      function pushWord(list, text, ids) {
+        list.push({ raw: false, text, ids });
+      }
+
+      function pushUnknown(list, text) {
+        const last = list[list.length - 1];
+        if (last && !last.raw && !last.ids) last.text += text;
+        else list.push({ raw: false, text, ids: null });
+      }
+
+      /**
+       * Fallback longest-match (max 6 caratteri) su un frammento.
+       * Serve quando Intl.Segmenter produce una parola che non è nel
+       * dizionario: si prova a spezzarla nelle unità più lunghe possibili.
+       */
+      function tokenizeChunk(chunk, out) {
+        const chars = Array.from(chunk);
+        let i = 0;
+
+        while (i < chars.length) {
+          let matchText = null;
+          let matchIds = null;
+          let matchLength = 0;
+          const max = Math.min(MAX_MATCH, chars.length - i);
+
+          for (let length = max; length >= 1; length -= 1) {
+            const candidate = chars.slice(i, i + length).join('');
+            if (!HAN_RE.test(candidate)) continue;
+            const ids = lookupIds(candidate);
+            if (ids) {
+              matchText = candidate;
+              matchIds = ids;
+              matchLength = length;
+              break;
+            }
+          }
+
+          if (matchText) {
+            pushWord(out, matchText, matchIds);
+            i += matchLength;
+          } else {
+            const char = chars[i];
+            if (HAN_RE.test(char)) pushUnknown(out, char);
+            else pushRaw(out, char);
+            i += 1;
+          }
+        }
+      }
+
+      function tokenize(text) {
+        const out = [];
+        if (!text) return out;
+
+        if (wordSegmenter) {
+          for (const part of wordSegmenter.segment(text)) {
+            const chunk = part.segment;
+            if (!chunk) continue;
+
+            // Spazi, punteggiatura, numeri e parole latine restano testo
+            // semplice: il dizionario e i pop-up riguardano solo gli hanzi.
+            if (!HAN_RE.test(chunk)) {
+              pushRaw(out, chunk);
+              continue;
+            }
+
+            const ids = lookupIds(chunk);
+            if (ids) pushWord(out, chunk, ids);
+            else tokenizeChunk(chunk, out);
+          }
+        } else {
+          // Browser senza Intl.Segmenter: longest-match sull'intero testo.
+          tokenizeChunk(text, out);
+        }
+
+        return out;
+      }
+
+      /* -------------------------------------------------------------------
+         7. Rendering della vista di lettura
+         ------------------------------------------------------------------- */
+      function renderReading() {
+        const fragment = document.createDocumentFragment();
+
+        tokens.forEach((token, index) => {
+          if (token.raw) {
+            fragment.append(document.createTextNode(token.text));
+            return;
+          }
+
+          const span = el('span', token.ids ? 'w' : 'w nf');
+          span.dataset.index = String(index);
+
+          if (token.ids && showPinyin && dictionary) {
+            const entry = dictionary.entries[token.ids[0]];
+            const pinyin = entry ? entry[2] : '';
+
+            const ruby = document.createElement('ruby');
+            ruby.append(document.createTextNode(token.text));
+            if (pinyin) {
+              const rt = document.createElement('rt');
+              rt.textContent = pinyin;
+              ruby.append(rt);
+            }
+            span.append(ruby);
+          } else {
+            span.textContent = token.text;
+          }
+
+          fragment.append(span);
+        });
+
+        reading.replaceChildren(fragment);
+
+        const wordCount = tokens.filter((t) => !t.raw && t.ids).length;
+        const charCount = Array.from(sourceText.value).filter((ch) => !/\s/.test(ch)).length;
+        metaWords.textContent = `${wordCount.toLocaleString('it-IT')} parole`;
+        metaChars.textContent = `${charCount.toLocaleString('it-IT')} caratteri`;
+      }
+
+      function setReadingScale(value) {
+        readingScale = clamp(value, 0.8, 1.6);
+        reading.style.setProperty('--reading-scale', readingScale.toFixed(2));
+        storage.set(LS.font, readingScale.toFixed(2));
+      }
+
+      function startReading() {
+        if (!dictReady) {
+          toast('Il dizionario è ancora in caricamento: attendi un momento.', 'error');
+          return;
+        }
+
+        const text = sourceText.value;
+        if (!text.trim()) {
+          toast('Incolla un testo in cinese per iniziare.', 'error');
+          sourceText.focus();
+          return;
+        }
+
+        storage.set(LS.text, text);
+        hidePopup();
+        tokens = tokenize(text);
+        renderReading();
+
+        // La vista di lettura non ha bisogno del messaggio di stato.
+        dictStatusEl.hidden = true;
+        clearTimeout(statusTimer);
+
+        inputView.hidden = true;
+        readingView.hidden = false;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function showInputView() {
+        hidePopup();
+        readingView.hidden = true;
+        inputView.hidden = false;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        sourceText.focus({ preventScroll: true });
+      }
+
+      /* -------------------------------------------------------------------
+         8. Pop-up della parola
+         ------------------------------------------------------------------- */
+      function setActiveWord(wordEl) {
+        if (activeWordEl) activeWordEl.classList.remove('active');
+        activeWordEl = wordEl || null;
+        if (activeWordEl) activeWordEl.classList.add('active');
+      }
+
+      function buildSense(entryId) {
+        const entry = dictionary.entries[entryId];
+        const sense = el('div', 'sense');
+
+        const head = el('div', 'sense-head');
+        head.append(el('span', 'pinyin', entry[2] || '—'));
+
+        const actions = el('div', 'sense-actions');
+
+        const speakBtn = el('button', 'round-btn');
+        speakBtn.type = 'button';
+        speakBtn.dataset.speak = entry[0];
+        speakBtn.title = 'Ascolta la pronuncia';
+        speakBtn.setAttribute('aria-label', `Ascolta ${entry[0]}`);
+        speakBtn.append(svgIcon('sound'));
+
+        const saveBtn = el('button', 'save-btn');
+        saveBtn.type = 'button';
+        saveBtn.dataset.save = String(entryId);
+        saveBtn.setAttribute('aria-pressed', 'false');
+        saveBtn.append(svgIcon('star'));
+        saveBtn.append(el('span', 'save-text', 'Salva'));
+        updateSaveButton(saveBtn, isSaved(entry));
+
+        actions.append(speakBtn, saveBtn);
+        head.append(actions);
+        sense.append(head);
+
+        const defs = el('ul', 'defs');
+        for (const definition of entry[3]) {
+          defs.append(el('li', null, definition));
+        }
+        sense.append(defs);
+
+        return sense;
+      }
+
+      function buildUnknownPopup(token) {
+        const wrapper = el('div', 'popup-empty');
+
+        const hzRow = el('div', 'hz-row');
+        const hz = el('span', 'hz-main', token.text);
+        hz.lang = 'zh-Hans';
+        hzRow.append(hz);
+        wrapper.append(hzRow);
+
+        wrapper.append(el('p', null,
+          'Nessuna voce in CC-CEDICT per questa parola o questo carattere.'));
+
+        const actions = el('div', 'sense-actions');
+        const speakBtn = el('button', 'round-btn');
+        speakBtn.type = 'button';
+        speakBtn.dataset.speak = token.text;
+        speakBtn.title = 'Ascolta';
+        speakBtn.setAttribute('aria-label', `Ascolta ${token.text}`);
+        speakBtn.append(svgIcon('sound'));
+        actions.append(speakBtn);
+        wrapper.append(actions);
+
+        return wrapper;
+      }
+
+      function populatePopup(token) {
+        popupScroll.replaceChildren();
+
+        if (!token.ids || !dictionary) {
+          popupScroll.append(buildUnknownPopup(token));
+          popupScroll.scrollTop = 0;
+          return;
+        }
+
+        // Raggruppa le voci che condividono la stessa coppia
+        // semplificato/tradizionale; le omonimie restano tutte visibili.
+        const groups = new Map();
+        for (const entryId of token.ids) {
+          const entry = dictionary.entries[entryId];
+          if (!entry) continue;
+          const key = `${entry[0]}\u0001${entry[1]}`;
+          if (!groups.has(key)) groups.set(key, { s: entry[0], t: entry[1], ids: [] });
+          groups.get(key).ids.push(entryId);
+        }
+
+        for (const group of groups.values()) {
+          const container = el('div', 'popup-group');
+
+          const hzRow = el('div', 'hz-row');
+          const simplified = el('span', 'hz-main', group.s);
+          simplified.lang = 'zh-Hans';
+          simplified.title = 'semplificato';
+          hzRow.append(simplified);
+
+          if (group.t !== group.s) {
+            hzRow.append(el('span', 'hz-sep', '/'));
+            const traditional = el('span', 'hz-alt', group.t);
+            traditional.lang = 'zh-Hant';
+            traditional.title = 'tradizionale';
+            hzRow.append(traditional);
+          }
+
+          container.append(hzRow);
+
+          for (const entryId of group.ids) {
+            container.append(buildSense(entryId));
+          }
+
+          popupScroll.append(container);
+        }
+
+        popupScroll.scrollTop = 0;
+      }
+
+      function positionPopup(anchor) {
+        const margin = 10;
+        const vw = document.documentElement.clientWidth;
+        const vh = window.innerHeight;
+
+        // Il pop-up non deve mai superare l'altezza utilisable dello schermo.
+        const maxHeight = Math.max(150, Math.min(vh * 0.7, vh - margin * 2));
+        popup.style.maxHeight = `${Math.round(maxHeight)}px`;
+
+        const rect = anchor.getBoundingClientRect();
+        const box = popup.getBoundingClientRect();
+
+        let left = rect.left + rect.width / 2 - box.width / 2;
+        left = clamp(left, margin, Math.max(margin, vw - box.width - margin));
+
+        // Zona da non coprire: header e barra degli strumenti sticky.
+        let safeTop = margin;
+        const headerRect = document.querySelector('.topbar').getBoundingClientRect();
+        if (headerRect.bottom > 0 && headerRect.top < vh * 0.4) {
+          safeTop = Math.max(safeTop, headerRect.bottom + 8);
+        }
+        const bar = readingView.querySelector('.reading-bar');
+        if (bar && !readingView.hidden) {
+          const barRect = bar.getBoundingClientRect();
+          if (barRect.bottom > 0 && barRect.top < vh * 0.4) {
+            safeTop = Math.max(safeTop, barRect.bottom + 8);
+          }
+        }
+
+        let top = rect.top - box.height - 10;
+        const below = rect.bottom + 10;
+
+        // Preferisce l'alto; se coprirebbe l'header va sotto.
+        if (top < safeTop) top = below;
+        if (top + box.height > vh - margin) {
+          if (rect.top - box.height - 10 >= margin) top = rect.top - box.height - 10;
+          else top = clamp(top, margin, Math.max(margin, vh - box.height - margin));
+        }
+        top = Math.max(margin, top);
+
+        popup.style.left = `${Math.round(left)}px`;
+        popup.style.top = `${Math.round(top)}px`;
+      }
+
+      function openPopup(tokenIndex, anchor) {
+        if (!dictionary) return;
+        const token = tokens[tokenIndex];
+        if (!token || token.raw) return;
+
+        if (popupOpen && popupTokenIndex === tokenIndex) return;
+
+        popupTokenIndex = tokenIndex;
+        populatePopup(token);
+        popup.hidden = false;
+        popupOpen = true;
+        setActiveWord(anchor);
+
+        // Misura dopo che il contenuto è nel DOM.
+        positionPopup(anchor);
+        requestAnimationFrame(() => {
+          if (popupOpen) positionPopup(anchor);
+        });
+      }
+
+      function hidePopup() {
+        clearTimeout(hoverOpenTimer);
+        clearTimeout(hoverCloseTimer);
+        if (!popupOpen) {
+          popup.hidden = true;
+          setActiveWord(null);
+          return;
+        }
+        popupOpen = false;
+        popupTokenIndex = -1;
+        popup.hidden = true;
+        setActiveWord(null);
+      }
+
+      /* -------------------------------------------------------------------
+         9. Eventi
+         ------------------------------------------------------------------- */
+      function wireEvents() {
+        themeBtn.addEventListener('click', () => {
+          const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+          applyTheme(next);
+        });
+
+        savedBtn.addEventListener('click', openSavedDialog);
+        closeSavedBtn.addEventListener('click', closeSavedDialog);
+
+        savedDialog.addEventListener('click', (event) => {
+          // Un click sullo sfondo (il <dialog> stesso) chiude il pannello.
+          if (event.target === savedDialog) closeSavedDialog();
+        });
+
+        savedDialog.addEventListener('close', () => {
+          document.body.classList.remove('modal-open');
+        });
+
+        savedList.addEventListener('click', (event) => {
+          const removeBtn = event.target.closest('[data-remove]');
+          if (removeBtn) {
+            const index = Number(removeBtn.dataset.remove);
+            if (Number.isInteger(index) && savedWords[index]) {
+              const removed = savedWords.splice(index, 1)[0];
+              persistSavedWords();
+              updateSavedCount();
+              renderSavedList();
+              refreshOpenSaveButtons();
+              toast(`“${removed.s}” rimossa.`);
+            }
+            return;
+          }
+
+          const speakBtn = event.target.closest('[data-speak]');
+          if (speakBtn) speak(speakBtn.dataset.speak);
+        });
+
+        exportCsvBtn.addEventListener('click', exportCsv);
+        clearSavedBtn.addEventListener('click', () => {
+          if (!savedWords.length) return;
+          if (!confirm('Svuotare l’elenco delle parole salvate?')) return;
+          savedWords = [];
+          persistSavedWords();
+          updateSavedCount();
+          renderSavedList();
+          refreshOpenSaveButtons();
+          toast('Elenco svuotato.');
+        });
+
+        readBtn.addEventListener('click', startReading);
+        editBtn.addEventListener('click', showInputView);
+
+        sampleBtn.addEventListener('click', () => {
+          sourceText.value = SAMPLE_TEXT;
+          storage.set(LS.text, sourceText.value);
+          sourceText.focus();
+          toast('Esempio inserito. Premi “Leggi”.');
+        });
+
+        clearTextBtn.addEventListener('click', () => {
+          sourceText.value = '';
+          storage.remove(LS.text);
+          sourceText.focus();
+        });
+
+        sourceText.addEventListener('input', debounce(() => {
+          storage.set(LS.text, sourceText.value);
+        }, 300));
+
+        sourceText.addEventListener('keydown', (event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            event.preventDefault();
+            startReading();
+          }
+        });
+
+        pinyinToggle.addEventListener('change', () => {
+          showPinyin = pinyinToggle.checked;
+          storage.set(LS.pinyin, showPinyin ? '1' : '0');
+          hidePopup();
+          if (!readingView.hidden) renderReading();
+        });
+
+        fontMinus.addEventListener('click', () => setReadingScale(readingScale - 0.1));
+        fontPlus.addEventListener('click', () => setReadingScale(readingScale + 0.1));
+
+        retryDictBtn.addEventListener('click', () => {
+          initDictionary();
+        });
+
+        refreshDictBtn.addEventListener('click', async () => {
+          if (!confirm('Riscaricare il dizionario dal server? La copia in cache verrà eliminata.')) return;
+          try {
+            await idbDelete(CACHE_KEY);
+          } catch (err) {
+            console.warn('Impossibile eliminare la cache:', err);
+          }
+          location.reload();
+        });
+
+        // Tap/click su una parola: apre o chiude il pop-up.
+        reading.addEventListener('click', (event) => {
+          const word = event.target.closest('.w');
+          if (!word) return;
+
+          const index = Number(word.dataset.index);
+          if (!Number.isInteger(index)) return;
+
+          if (popupOpen && popupTokenIndex === index) {
+            hidePopup();
+            return;
+          }
+          openPopup(index, word);
+        });
+
+        // Hover su dispositivi con puntatore preciso.
+        reading.addEventListener('pointerover', (event) => {
+          if (!finePointer.matches) return;
+          const word = event.target.closest('.w');
+          if (!word) return;
+          if (event.relatedTarget && word.contains(event.relatedTarget)) return;
+
+          clearTimeout(hoverOpenTimer);
+          clearTimeout(hoverCloseTimer);
+          hoverOpenTimer = setTimeout(() => {
+            openPopup(Number(word.dataset.index), word);
+          }, 90);
+        });
+
+        reading.addEventListener('pointerout', (event) => {
+          if (!finePointer.matches) return;
+          const word = event.target.closest('.w');
+          if (!word) return;
+          if (event.relatedTarget && word.contains(event.relatedTarget)) return;
+
+          clearTimeout(hoverOpenTimer);
+          clearTimeout(hoverCloseTimer);
+          hoverCloseTimer = setTimeout(hidePopup, 180);
+        });
+
+        // Permette di spostare il mouse nel pop-up per usare audio/salva.
+        popup.addEventListener('pointerenter', () => {
+          clearTimeout(hoverCloseTimer);
+          clearTimeout(hoverOpenTimer);
+        });
+
+        popup.addEventListener('pointerleave', () => {
+          if (!finePointer.matches) return;
+          clearTimeout(hoverCloseTimer);
+          hoverCloseTimer = setTimeout(hidePopup, 180);
+        });
+
+        popup.addEventListener('click', (event) => {
+          const speakBtn = event.target.closest('[data-speak]');
+          if (speakBtn) {
+            speak(speakBtn.dataset.speak);
+            return;
+          }
+
+          const saveBtn = event.target.closest('[data-save]');
+          if (saveBtn) {
+            toggleSaved(Number(saveBtn.dataset.save));
+          }
+        });
+
+        popupCloseBtn.addEventListener('click', hidePopup);
+
+        // Tap fuori dal pop-up: chiude.
+        document.addEventListener('pointerdown', (event) => {
+          if (!popupOpen) return;
+          if (popup.contains(event.target)) return;
+          if (event.target.closest && event.target.closest('.w')) return;
+          hidePopup();
+        }, true);
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && popupOpen) hidePopup();
+        });
+
+        window.addEventListener('scroll', () => {
+          if (popupOpen) hidePopup();
+        }, { passive: true });
+
+        window.addEventListener('resize', () => {
+          if (popupOpen) hidePopup();
+        });
+
+        if ('speechSynthesis' in window) {
+          refreshVoices();
+          if (typeof window.speechSynthesis.addEventListener === 'function') {
+            window.speechSynthesis.addEventListener('voiceschanged', refreshVoices);
+          } else {
+            window.speechSynthesis.onvoiceschanged = refreshVoices;
+          }
+        }
+      }
+
+      /* -------------------------------------------------------------------
+         10. Avvio
+         ------------------------------------------------------------------- */
+      function init() {
+        applyTheme(document.documentElement.dataset.theme, false);
+        updateSavedCount();
+        pinyinToggle.checked = showPinyin;
+        setReadingScale(readingScale);
+
+        const previousText = storage.get(LS.text, '');
+        if (previousText) sourceText.value = previousText;
+
+        wireEvents();
+        initDictionary();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

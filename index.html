@@ -52,6 +52,15 @@
       --shadow: 0 24px 60px rgba(74, 51, 28, .13), 0 3px 10px rgba(74, 51, 28, .06);
       --radius: 20px;
       --reading-scale: 1;
+
+      /* Livelli HSK: colori scelti per restare leggibili sul tema chiaro
+         (contrasto ≥ 4.5:1 su --surface) senza perdere la differenza tra
+         le fasce. */
+      --hsk-12: #1b6f43;   /* verde    HSK 1-2 */
+      --hsk-34: #17619b;   /* azzurro  HSK 3-4 */
+      --hsk-56: #995000;   /* arancione HSK 5-6 */
+      --hsk-79: #6a3d9e;   /* viola    HSK 7-9 */
+      --hsk-none: #626460; /* grigio   fuori lista */
     }
 
     [data-theme="dark"] {
@@ -69,6 +78,13 @@
       --error: #ff8d7d;
       --focus: rgba(229, 118, 95, .25);
       --shadow: 0 24px 60px rgba(0, 0, 0, .45), 0 3px 10px rgba(0, 0, 0, .3);
+
+      /* Varianti chiare per il tema scuro (contrasto ≥ 7:1 su --surface). */
+      --hsk-12: #79d6a2;
+      --hsk-34: #7cbcef;
+      --hsk-56: #f2b36b;
+      --hsk-79: #c6a3f0;
+      --hsk-none: #a6a9ad;
     }
 
     /* =====================================================================
@@ -546,6 +562,239 @@
       text-underline-offset: .18em;
     }
 
+    /* Colore della parola in base al livello HSK. La variabile --w-color
+       viene riusata da evidenziazione, badge e legenda. */
+    .hsk-12 { --w-color: var(--hsk-12); }
+    .hsk-34 { --w-color: var(--hsk-34); }
+    .hsk-56 { --w-color: var(--hsk-56); }
+    .hsk-79 { --w-color: var(--hsk-79); }
+    .hsk-none { --w-color: var(--hsk-none); }
+
+    .w.hsk-12, .w.hsk-34, .w.hsk-56, .w.hsk-79, .w.hsk-none {
+      color: var(--w-color);
+    }
+
+    /* Parola sopra il livello scelto: resta leggibile ma si vede subito
+       cosa c'è ancora da imparare. */
+    .w.learn {
+      background: color-mix(in srgb, var(--w-color) 14%, transparent);
+      box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--w-color) 42%, transparent);
+    }
+
+    .w.learn:hover,
+    .w.learn.active {
+      background: color-mix(in srgb, var(--accent) 20%, transparent);
+      box-shadow: inset 0 -2px 0 var(--accent);
+    }
+
+    /* =====================================================================
+       Impostazioni HSK e statistiche del testo
+       ===================================================================== */
+    .hsk-panel {
+      margin-top: 12px;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+    }
+
+    .hsk-panel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .hsk-panel-head h2 {
+      color: var(--muted);
+      font-size: .78rem;
+      font-weight: 750;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .hsk-meta {
+      color: var(--muted);
+      font-size: .72rem;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .hsk-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 20px;
+    }
+
+    .hsk-level {
+      display: flex;
+      flex: 1 1 280px;
+      align-items: center;
+      gap: 10px;
+      min-width: 210px;
+    }
+
+    .hsk-level label {
+      flex: none;
+      font-size: .85rem;
+      font-weight: 650;
+    }
+
+    .hsk-level input[type="range"] {
+      flex: 1;
+      min-width: 90px;
+      height: 24px;
+      margin: 0;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .hsk-level output {
+      flex: none;
+      min-width: 66px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: .82rem;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+
+    .hsk-select {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .85rem;
+      font-weight: 650;
+    }
+
+    .hsk-select select {
+      max-width: 190px;
+      padding: .38rem .7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--text);
+      font-size: .82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .hsk-select select:hover { border-color: var(--accent); }
+
+    .hsk-hide {
+      margin-top: 10px;
+      font-size: .8rem;
+      font-weight: 600;
+    }
+
+    .text-stats {
+      margin-top: 10px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+    }
+
+    .stats-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 3px 16px;
+    }
+
+    .stats-total {
+      font-size: .88rem;
+      font-weight: 750;
+    }
+
+    .stats-difficulty {
+      color: var(--muted);
+      font-size: .8rem;
+    }
+
+    .stats-difficulty strong {
+      color: var(--text);
+      font-weight: 750;
+    }
+
+    .level-bar {
+      display: flex;
+      height: 8px;
+      margin-top: 11px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      overflow: hidden;
+    }
+
+    .level-bar span {
+      display: block;
+      height: 100%;
+      min-width: 0;
+      background: var(--w-color, var(--hsk-none));
+    }
+
+    .level-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 14px;
+      margin: 10px 0 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: .75rem;
+    }
+
+    .level-legend li {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .level-dot {
+      width: 9px;
+      height: 9px;
+      flex: none;
+      border-radius: 50%;
+      background: var(--w-color, var(--hsk-none));
+    }
+
+    .level-legend strong {
+      color: var(--text);
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stats-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: .7rem;
+      line-height: 1.5;
+    }
+
+    .hsk-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .18em .55em;
+      border: 1px solid color-mix(in srgb, var(--w-color, var(--hsk-none)) 36%, transparent);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--w-color, var(--hsk-none)) 14%, transparent);
+      color: var(--w-color, var(--hsk-none));
+      font-family: var(--ui);
+      font-size: .68rem;
+      font-weight: 750;
+      line-height: 1.4;
+      letter-spacing: .01em;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+
     ruby { ruby-position: over; }
 
     rt {
@@ -822,6 +1071,12 @@
       font-weight: 500;
     }
 
+    .saved-hz .hsk-badge {
+      margin-left: 8px;
+      font-size: .58em;
+      vertical-align: .4em;
+    }
+
     .saved-pinyin {
       margin-top: 2px;
       color: var(--accent);
@@ -945,6 +1200,15 @@
 
       .reading-bar { margin-top: 16px; padding: 8px 0; }
       .reading { padding: 18px 16px; border-radius: 16px; line-height: 2.2; }
+
+      .hsk-panel,
+      .text-stats { padding: 12px; border-radius: 14px; }
+      .hsk-level { flex-basis: 100%; }
+      .hsk-select { flex: 1 1 100%; justify-content: space-between; }
+      .hsk-select select { max-width: none; }
+      .hsk-hide { align-items: flex-start; }
+      .stats-difficulty { font-size: .76rem; }
+      .level-legend { font-size: .72rem; gap: 4px 10px; }
 
       .reading-meta { font-size: .74rem; }
       .reading-meta .meta-hint { flex-basis: 100%; margin-left: 0; }
@@ -1095,6 +1359,44 @@
           </label>
         </div>
       </div>
+
+      <section class="hsk-panel" aria-labelledby="hskPanelTitle">
+        <div class="hsk-panel-head">
+          <h2 id="hskPanelTitle">Impostazioni HSK</h2>
+          <span class="hsk-meta" id="hskMeta">Caricamento lista HSK…</span>
+        </div>
+        <div class="hsk-controls">
+          <div class="hsk-level">
+            <label for="myLevel">Il mio livello</label>
+            <input type="range" id="myLevel" min="1" max="6" step="1" value="4"
+              aria-describedby="myLevelOut">
+            <output id="myLevelOut" for="myLevel" aria-live="polite">HSK 4</output>
+          </div>
+          <label class="hsk-select">
+            <span>Sistema</span>
+            <select id="hskSystem">
+              <option value="2">HSK 2.0 (1–6)</option>
+              <option value="3">HSK 3.0 (1–9)</option>
+            </select>
+          </label>
+        </div>
+        <label class="switch hsk-hide">
+          <input type="checkbox" id="hideKnownPinyin">
+          <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+          <span>Nascondi il pinyin sulle parole che conosco</span>
+        </label>
+      </section>
+
+      <section class="text-stats" id="textStats" aria-label="Statistiche del testo" hidden>
+        <div class="stats-head">
+          <span class="stats-total" id="statsTotal"></span>
+          <span class="stats-difficulty" id="statsDifficulty"></span>
+        </div>
+        <div class="level-bar" id="levelBar" aria-hidden="true"></div>
+        <ul class="level-legend" id="levelLegend"></ul>
+        <p class="stats-note" id="statsNote"></p>
+      </section>
+
       <article class="reading" id="reading" lang="zh"></article>
       <div class="reading-meta">
         <span id="metaWords"></span>
@@ -1113,8 +1415,16 @@
     </p>
     <p>
       <span id="dictInfo">Dizionario non ancora caricato</span> ·
-      Nessuna chiamata di rete oltre a <code>dict.json</code> ·
+      Nessuna chiamata di rete oltre a <code>dict.json</code> e alle liste HSK ·
       <button type="button" class="linklike" id="refreshDictBtn">Aggiorna dizionario</button>
+    </p>
+    <p>
+      Liste HSK da
+      <a href="https://github.com/drkameleon/complete-hsk-vocabulary" target="_blank" rel="noopener">complete-hsk-vocabulary</a>
+      © Yanis Zafirópulos, licenza
+      <a href="https://opensource.org/license/mit" target="_blank" rel="noopener">MIT</a>.
+      I file <code>hsk.json</code> (HSK 2.0) e <code>hsk3.json</code> (HSK 3.0) sono generati da
+      <code>tools/build_hsk.py</code>.
     </p>
   </footer>
 
@@ -1145,7 +1455,7 @@
           <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>
           Svuota
         </button>
-        <span class="dialog-note">Colonne: hanzi, pinyin, significato. Il file è UTF-8 con BOM, pronto per l’importazione.</span>
+        <span class="dialog-note">Colonne: hanzi, pinyin, significato, tags. Il livello HSK è esportato come tag Anki (es. <code>hsk2-4</code>). File UTF-8 con BOM, pronto per l’importazione.</span>
       </div>
     </div>
   </dialog>
@@ -1159,11 +1469,14 @@
          1. costanti e riferimenti DOM
          2. utilità e storage
          3. parole salvate + CSV
-         4. caricamento dizionario (fetch + IndexedDB)
-         5. segmentazione
-         6. rendering della vista di lettura
-         7. pop-up, audio, salvataggio
-         8. eventi e avvio
+         4. tema chiaro/scuro
+         5. caricamento dizionario (fetch + IndexedDB)
+         5b. liste HSK 2.0 / 3.0
+         6. segmentazione
+         7. rendering della vista di lettura + statistiche HSK
+         8. pop-up, audio, salvataggio
+         9. eventi
+        10. avvio
        ===================================================================== */
     (() => {
       'use strict';
@@ -1172,6 +1485,8 @@
          1. Costanti e riferimenti DOM
          ------------------------------------------------------------------- */
       const DICT_URL = 'dict.json';
+      const HSK_URLS = { '2': 'hsk.json', '3': 'hsk3.json' };
+      const HSK_MAX = { '2': 6, '3': 9 };
       const DB_NAME = 'hanzi-reader';
       const DB_VERSION = 1;
       const DB_STORE = 'dictionary';
@@ -1186,7 +1501,10 @@
         text: 'zn_text',
         saved: 'zn_saved_words_v1',
         pinyin: 'zn_show_pinyin',
-        font: 'zn_font_scale'
+        font: 'zn_font_scale',
+        hskSystem: 'zn_hsk_system',
+        hskLevel: 'zn_hsk_level',
+        hideKnownPinyin: 'zn_hide_known_pinyin'
       };
 
       const SAMPLE_TEXT =
@@ -1210,6 +1528,17 @@
       const fontMinus = $('#fontMinus');
       const fontPlus = $('#fontPlus');
       const pinyinToggle = $('#pinyinToggle');
+      const myLevelInput = $('#myLevel');
+      const myLevelOut = $('#myLevelOut');
+      const hskSystemSelect = $('#hskSystem');
+      const hideKnownPinyinToggle = $('#hideKnownPinyin');
+      const hskMeta = $('#hskMeta');
+      const textStats = $('#textStats');
+      const statsTotal = $('#statsTotal');
+      const statsDifficulty = $('#statsDifficulty');
+      const levelBar = $('#levelBar');
+      const levelLegend = $('#levelLegend');
+      const statsNote = $('#statsNote');
       const reading = $('#reading');
       const metaWords = $('#metaWords');
       const metaChars = $('#metaChars');
@@ -1308,6 +1637,17 @@
       let readingScale = clamp(parseFloat(storage.get(LS.font, '1')) || 1, 0.8, 1.6);
       let savedWords = loadSavedWords();
 
+      let hskSystem = storage.get(LS.hskSystem, '2') === '3' ? '3' : '2';
+      let myLevel = clamp(
+        parseInt(storage.get(LS.hskLevel, '4'), 10) || 4,
+        1,
+        HSK_MAX[hskSystem]
+      );
+      let hideKnownPinyin = storage.get(LS.hideKnownPinyin, '0') === '1';
+      let hskData = null;
+      const hskCache = new Map();
+      let hskRequest = 0;
+
       const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
 
       /* -------------------------------------------------------------------
@@ -1332,6 +1672,8 @@
               t: typeof w.t === 'string' ? w.t : w.s,
               p: w.p,
               d: w.d.filter((d) => typeof d === 'string'),
+              hsk: Number.isInteger(w.hsk) && w.hsk >= 1 && w.hsk <= 9 ? w.hsk : null,
+              hskSys: w.hskSys === '3' ? '3' : (w.hskSys === '2' ? '2' : null),
               savedAt: Number(w.savedAt) || Date.now()
             }));
         } catch (err) {
@@ -1383,12 +1725,15 @@
           savedWords.splice(index, 1);
           toast('Parola rimossa dalle salvate.');
         } else {
+          const level = hskLevelForWord(entry[0], entry[1]);
           savedWords.unshift({
             key,
             s: entry[0],
             t: entry[1],
             p: entry[2],
             d: entry[3].slice(),
+            hsk: level,
+            hskSys: level === null ? null : hskSystem,
             savedAt: Date.now()
           });
           toast('Parola salvata.');
@@ -1411,9 +1756,11 @@
           return;
         }
 
-        const rows = [['hanzi', 'pinyin', 'significato']];
+        const rows = [['hanzi', 'pinyin', 'significato', 'tags']];
         for (const word of savedWords) {
-          rows.push([word.s, word.p, word.d.join('; ')]);
+          const hsk = savedWordHsk(word);
+          const tag = hsk ? `hsk${hsk.system}-${hsk.level}` : '';
+          rows.push([word.s, word.p, word.d.join('; '), tag]);
         }
 
         // BOM UTF-8: Excel riconosce subito i caratteri cinesi.
@@ -1465,6 +1812,8 @@
             hz.append(trad);
           }
           info.append(hz);
+          const savedHsk = savedWordHsk(word);
+          if (savedHsk) hz.append(buildHskBadge(savedHsk.level, savedHsk.system));
           info.append(el('div', 'saved-pinyin', word.p));
           const meaning = el('div', 'saved-meaning', word.d.join('; '));
           meaning.title = word.d.join('; ');
@@ -1797,6 +2146,113 @@
       }
 
       /* -------------------------------------------------------------------
+         5b. Liste HSK 2.0 / 3.0
+         ------------------------------------------------------------------- */
+      function hskClassForLevel(level) {
+        if (level === null || level === undefined) return 'hsk-none';
+        if (level <= 2) return 'hsk-12';
+        if (level <= 4) return 'hsk-34';
+        if (level <= 6) return 'hsk-56';
+        return 'hsk-79';
+      }
+
+      function levelLabel(level, system = hskSystem) {
+        if (level === null || level === undefined) return 'Fuori lista';
+        // La lista ufficiale HSK 3.0 riunisce i livelli 7, 8 e 9.
+        if (system === '3' && level >= 7) return 'HSK 7–9';
+        return `HSK ${level}`;
+      }
+
+      function hskLevelForWord(simplified, traditional) {
+        if (!hskData) return null;
+        let level = hskData[simplified];
+        if (level === undefined && traditional) level = hskData[traditional];
+        return level === undefined ? null : level;
+      }
+
+      function tokenHskLevel(token) {
+        if (!hskData || !token.ids || !dictionary) return null;
+        let best = null;
+        for (const entryId of token.ids) {
+          const entry = dictionary.entries[entryId];
+          if (!entry) continue;
+          const level = hskLevelForWord(entry[0], entry[1]);
+          if (level !== null && (best === null || level < best)) best = level;
+        }
+        return best;
+      }
+
+      function buildHskBadge(level, system = hskSystem) {
+        const badge = el('span', 'hsk-badge');
+        badge.classList.add(hskClassForLevel(level));
+        badge.textContent = levelLabel(level, system);
+        badge.title = level === null || level === undefined
+          ? 'Non presente nella lista HSK selezionata'
+          : `Lista HSK ${system}.0 · livello ${level}`;
+        return badge;
+      }
+
+      function savedWordHsk(word) {
+        if (word.hsk !== null && word.hsk !== undefined) {
+          return { level: word.hsk, system: word.hskSys || hskSystem };
+        }
+        const level = hskLevelForWord(word.s, word.t);
+        return level === null ? null : { level, system: hskSystem };
+      }
+
+      function updateLevelControl() {
+        const max = HSK_MAX[hskSystem];
+        myLevel = clamp(myLevel, 1, max);
+        myLevelInput.max = String(max);
+        myLevelInput.value = String(myLevel);
+        myLevelInput.setAttribute('aria-valuetext', levelLabel(myLevel));
+        myLevelOut.textContent = levelLabel(myLevel);
+        hskSystemSelect.value = hskSystem;
+        hideKnownPinyinToggle.checked = hideKnownPinyin;
+      }
+
+      function applyHsk(system) {
+        hskData = hskCache.get(system) || null;
+        const name = system === '3' ? 'HSK 3.0' : 'HSK 2.0';
+        hskMeta.textContent = hskData
+          ? `${name} · ${Object.keys(hskData).length.toLocaleString('it-IT')} parole`
+          : 'Lista HSK non disponibile';
+        updateLevelControl();
+        hidePopup();
+        if (!readingView.hidden) renderReading();
+      }
+
+      async function loadHsk(system = hskSystem) {
+        const request = ++hskRequest;
+        hskMeta.textContent = 'Caricamento lista HSK…';
+
+        if (hskCache.has(system)) {
+          if (system === hskSystem) applyHsk(system);
+          return;
+        }
+
+        try {
+          const response = await fetch(HSK_URLS[system], { cache: 'no-cache' });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} per ${HSK_URLS[system]}`);
+          }
+          const data = await response.json();
+          if (!data || typeof data !== 'object' || Array.isArray(data)) {
+            throw new Error('Formato della lista HSK non riconosciuto.');
+          }
+          hskCache.set(system, data);
+          if (request === hskRequest && system === hskSystem) applyHsk(system);
+        } catch (err) {
+          console.warn('Lista HSK:', err);
+          if (request !== hskRequest || system !== hskSystem) return;
+          hskData = null;
+          hskMeta.textContent = 'Lista HSK non disponibile';
+          updateStats();
+          if (!readingView.hidden) renderReading();
+        }
+      }
+
+      /* -------------------------------------------------------------------
          6. Segmentazione del testo
          ------------------------------------------------------------------- */
       let wordSegmenter = null;
@@ -1904,6 +2360,12 @@
          7. Rendering della vista di lettura
          ------------------------------------------------------------------- */
       function renderReading() {
+        if (hskData) {
+          for (const token of tokens) {
+            if (!token.raw) token.hsk = tokenHskLevel(token);
+          }
+        }
+
         const fragment = document.createDocumentFragment();
 
         tokens.forEach((token, index) => {
@@ -1912,10 +2374,23 @@
             return;
           }
 
+          const level = hskData ? token.hsk : null;
+          const known = level !== null && level !== undefined && level <= myLevel;
           const span = el('span', token.ids ? 'w' : 'w nf');
           span.dataset.index = String(index);
 
-          if (token.ids && showPinyin && dictionary) {
+          if (hskData) {
+            span.classList.add(hskClassForLevel(level));
+            if (!known) span.classList.add('learn');
+            if (level !== null && level !== undefined) span.dataset.hsk = String(level);
+          }
+
+          // Con "Nascondi il pinyin sulle parole che conosco" il ruby resta
+          // solo sopra il livello scelto e sulle parole fuori lista.
+          const showRuby = token.ids && dictionary && showPinyin &&
+            (!hideKnownPinyin || !hskData || !known);
+
+          if (showRuby) {
             const entry = dictionary.entries[token.ids[0]];
             const pinyin = entry ? entry[2] : '';
 
@@ -1940,7 +2415,117 @@
         const charCount = Array.from(sourceText.value).filter((ch) => !/\s/.test(ch)).length;
         metaWords.textContent = `${wordCount.toLocaleString('it-IT')} parole`;
         metaChars.textContent = `${charCount.toLocaleString('it-IT')} caratteri`;
+
+        updateStats();
       }
+
+      function difficultyLabel(percent) {
+        if (percent >= 85) return 'facile';
+        if (percent >= 65) return 'media';
+        if (percent >= 45) return 'impegnativa';
+        return 'difficile';
+      }
+
+      function updateStats() {
+        if (!hskData || readingView.hidden || !tokens.length) {
+          textStats.hidden = true;
+          return;
+        }
+
+        const counts = new Map();
+        let total = 0;
+
+        for (const token of tokens) {
+          if (token.raw) continue;
+          total += 1;
+          const level = token.hsk;
+          const key = level === null || level === undefined ? 'none' : String(level);
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+
+        if (!total) {
+          textStats.hidden = true;
+          return;
+        }
+
+        textStats.hidden = false;
+        const percentOf = (count) => Math.round((count / total) * 100);
+        const countFor = (levels) => levels.reduce(
+          (sum, level) => sum + (counts.get(String(level)) || 0),
+          0
+        );
+
+        const buckets = [];
+        for (let level = 1; level <= 6; level += 1) {
+          buckets.push({
+            label: `HSK ${level}`,
+            levels: [level],
+            color: hskClassForLevel(level)
+          });
+        }
+        if (hskSystem === '3') {
+          buckets.push({ label: 'HSK 7–9', levels: [7, 8, 9], color: 'hsk-79' });
+        }
+
+        const absent = counts.get('none') || 0;
+        const tagged = total - absent;
+        let within = 0;
+
+        levelBar.replaceChildren();
+        levelLegend.replaceChildren();
+
+        for (const bucket of buckets) {
+          const count = countFor(bucket.levels);
+          if (bucket.levels.some((level) => level <= myLevel)) within += count;
+
+          if (count > 0) {
+            const segment = el('span', bucket.color);
+            segment.style.width = `${(count / total) * 100}%`;
+            levelBar.append(segment);
+          }
+
+          const item = el('li', bucket.color);
+          item.title = `${count} ${count === 1 ? 'parola' : 'parole'} su ${total}`;
+          item.append(el('span', 'level-dot'));
+          item.append(document.createTextNode(`${bucket.label} `));
+          item.append(el('strong', null, `${percentOf(count)}%`));
+          levelLegend.append(item);
+        }
+
+        if (absent > 0) {
+          const segment = el('span', 'hsk-none');
+          segment.style.width = `${(absent / total) * 100}%`;
+          levelBar.append(segment);
+
+          const item = el('li', 'hsk-none');
+          item.title = `${absent} ${absent === 1 ? 'parola' : 'parole'} su ${total}`;
+          item.append(el('span', 'level-dot'));
+          item.append(document.createTextNode('Fuori lista '));
+          item.append(el('strong', null, `${percentOf(absent)}%`));
+          levelLegend.append(item);
+        }
+
+        statsTotal.textContent = total === 1
+          ? '1 parola'
+          : `${total.toLocaleString('it-IT')} parole`;
+
+        statsDifficulty.replaceChildren();
+        if (!tagged) {
+          statsDifficulty.textContent = 'Nessuna parola nella lista HSK';
+        } else {
+          const percent = percentOf(within);
+          statsDifficulty.append(
+            document.createTextNode(`${percent}% parole entro ${levelLabel(myLevel)} · `),
+            el('strong', null, difficultyLabel(percent))
+          );
+        }
+
+        const legend = hskSystem === '3'
+          ? 'Verde HSK 1–2 · azzurro HSK 3–4 · arancione HSK 5–6 · viola HSK 7–9 · grigio fuori lista.'
+          : 'Verde HSK 1–2 · azzurro HSK 3–4 · arancione HSK 5–6 · grigio fuori lista.';
+        statsNote.textContent = `${legend} Le parole sopra il tuo livello sono evidenziate.`;
+      }
+
 
       function setReadingScale(value) {
         readingScale = clamp(value, 0.8, 1.6);
@@ -1972,6 +2557,7 @@
 
         inputView.hidden = true;
         readingView.hidden = false;
+        updateStats();
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
 
@@ -2036,6 +2622,7 @@
         const hz = el('span', 'hz-main', token.text);
         hz.lang = 'zh-Hans';
         hzRow.append(hz);
+        if (hskData) hzRow.append(buildHskBadge(null));
         wrapper.append(hzRow);
 
         wrapper.append(el('p', null,
@@ -2089,6 +2676,10 @@
             traditional.lang = 'zh-Hant';
             traditional.title = 'tradizionale';
             hzRow.append(traditional);
+          }
+
+          if (hskData) {
+            hzRow.append(buildHskBadge(hskLevelForWord(group.s, group.t)));
           }
 
           container.append(hzRow);
@@ -2267,6 +2858,39 @@
           if (!readingView.hidden) renderReading();
         });
 
+        const refreshHskView = () => {
+          hidePopup();
+          if (!readingView.hidden) renderReading();
+        };
+        const refreshHskViewSoon = debounce(refreshHskView, 120);
+
+        myLevelInput.addEventListener('input', () => {
+          myLevel = clamp(parseInt(myLevelInput.value, 10) || 1, 1, HSK_MAX[hskSystem]);
+          storage.set(LS.hskLevel, String(myLevel));
+          myLevelInput.setAttribute('aria-valuetext', levelLabel(myLevel));
+          myLevelOut.textContent = levelLabel(myLevel);
+          refreshHskViewSoon();
+        });
+
+        myLevelInput.addEventListener('change', refreshHskView);
+
+        hideKnownPinyinToggle.addEventListener('change', () => {
+          hideKnownPinyin = hideKnownPinyinToggle.checked;
+          storage.set(LS.hideKnownPinyin, hideKnownPinyin ? '1' : '0');
+          refreshHskView();
+        });
+
+        hskSystemSelect.addEventListener('change', () => {
+          hskSystem = hskSystemSelect.value === '3' ? '3' : '2';
+          storage.set(LS.hskSystem, hskSystem);
+          myLevel = clamp(myLevel, 1, HSK_MAX[hskSystem]);
+          storage.set(LS.hskLevel, String(myLevel));
+          hskData = null;
+          updateLevelControl();
+          refreshHskView();
+          loadHsk(hskSystem);
+        });
+
         fontMinus.addEventListener('click', () => setReadingScale(readingScale - 0.1));
         fontPlus.addEventListener('click', () => setReadingScale(readingScale + 0.1));
 
@@ -2389,12 +3013,14 @@
         updateSavedCount();
         pinyinToggle.checked = showPinyin;
         setReadingScale(readingScale);
+        updateLevelControl();
 
         const previousText = storage.get(LS.text, '');
         if (previousText) sourceText.value = previousText;
 
         wireEvents();
         initDictionary();
+        loadHsk(hskSystem);
       }
 
       init();
